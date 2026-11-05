@@ -681,7 +681,6 @@ body { background: var(--creme); }
 .capa__frase { position: absolute; bottom: 52px; left: 0; right: 0; z-index: 3; text-align: center; pointer-events: none; }
 .capa__frase strong { display: inline-block; margin: 0 .18em; font-size: clamp(1.15rem, 2.2vw, 2.1rem); }
 .capa__frase .vazado { display: inline-block; color: var(--fogo) !important; -webkit-text-stroke: 0; }
-.capa__mover { position: absolute; z-index: 3; left: 50%; bottom: 118px; translate: -50% 0; padding: .55em 1.1em; border-radius: 99px; background: var(--raizes); color: var(--areia); font: 600 .78rem var(--f-titulo); white-space: nowrap; }
 .capa__rodape { position: absolute; bottom: 24px; left: var(--gutter); right: calc(var(--gutter) + 62px); z-index: 3; display: flex; justify-content: space-between; gap: 16px; font: 700 .76rem var(--f-titulo); letter-spacing: .06em; text-transform: uppercase; color: var(--raizes); }
 .capa__rodape i { font-style: normal; display: inline-block; animation: desce 1.6s var(--ease) infinite; }
 @keyframes desce { 50% { transform: translateY(5px); } }
@@ -738,8 +737,8 @@ body { background: var(--creme); }
   .capa__frase { bottom: 60px; }
   .capa__frase strong { display: block; font-size: 1.35rem; }
   .capa__fotos { top: 34vh; gap: 0; }
-  .capa__fotos { gap: 2vw; }
-  .capa__fotos img { height: 21vh; }
+  .capa__fotos { gap: 4vw; }
+  .capa__fotos img { height: 20vh; }
   .capa__rodape { font-size: .62rem; }
   .fl__gigante { top: 25%; font-size: 15vw; }
   .fl__info { left: var(--gutter); right: var(--gutter); bottom: 22px; width: auto; }

@@ -181,20 +181,9 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     sensor.alvoY = gsap.utils.clamp(-1.2, 1.2, (frente - sensor.baseY) / 16);
     sensor.ativo = true;
   };
-  if (toque && window.isSecureContext && "DeviceOrientationEvent" in window) {
-    const pedir = DeviceOrientationEvent.requestPermission;
-    if (typeof pedir !== "function") window.addEventListener("deviceorientation", aoInclinar, { passive: true }); // Android
-    else {
-      // iPhone: só libera o sensor depois de um toque de quem visita
-      const botao = document.querySelector(".capa__mover");
-      botao.hidden = false;
-      const aoTocar = () => DeviceOrientationEvent.requestPermission().then((r) => {
-        window.removeEventListener("click", aoTocar);
-        botao.hidden = true;
-        if (r === "granted") window.addEventListener("deviceorientation", aoInclinar, { passive: true });
-      }).catch(() => {}); // sem gesto válido: tenta de novo no próximo toque
-      window.addEventListener("click", aoTocar);
-    }
+  // Só onde o navegador libera sem perguntar (Android). O iPhone exige autorização na tela, então lá ficam o balanço e o dedo
+  if (toque && window.isSecureContext && "DeviceOrientationEvent" in window && typeof DeviceOrientationEvent.requestPermission !== "function") {
+    window.addEventListener("deviceorientation", aoInclinar, { passive: true });
   }
 
   /* ---------- Capa: nome em 3D no alto, pacotes em leque embaixo, sombras no chão ---------- */
@@ -291,7 +280,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     return s;
   });
 
-  let passoCel = 0, centroY = -1, escalaItem = 1, alturaCapa = 6.4, chaoY = -2.42;
+  let fator = 1, centroY = -1, escalaItem = 1, alturaCapa = 6.4, chaoY = -2.42;
   const posicionaNome = () => {
     // Encaixa o nome exatamente onde o SVG está, para a troca não dar pulo
     const r = svgLogo.getBoundingClientRect(), pal = palcoCapa.getBoundingClientRect();
@@ -304,9 +293,9 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     const estreito = asp < 0.85;
     alturaCapa = estreito ? Math.max(8.2, 3.9 / asp) : Math.max(6.4, 11 / asp);
     centroY = estreito ? -0.75 : -0.98;
-    // Celular: fila de quatro com respiro, sem sobrepor; o tamanho sai da largura da tela
-    passoCel = estreito ? (alturaCapa * asp) / 4.25 : 0;
-    const esc = estreito ? passoCel * 0.82 : 1.13;
+    // Celular: a mesma disposição do computador, em escala, para caber na largura da tela
+    fator = estreito ? (alturaCapa * asp) / 6.7 : 1; // folga para o balanço não cortar os pacotes de fora
+    const esc = 1.13 * fator;
     noLeque.forEach((n) => { n.p.scale.setScalar(esc); n.esc = esc; });
     chaoY = centroY - 1.43 * esc;
     escalaItem = estreito ? 0.8 : 1;
@@ -345,11 +334,10 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     }
     noLeque.forEach((n, k) => {
       const dentro = gsap.utils.clamp(0, 1, entrada * 1.5 - k * 0.12);
-      const emFila = passoCel > 0;
-      const x = (emFila ? (k - 1.5) * passoCel : n.x * (1 + saida * 0.3)) + (emFila ? 0 : cx * (0.08 + n.z * 0.1));
+      const x = n.x * fator * (1 + saida * 0.3) + cx * (0.08 + n.z * 0.1) * fator;
       const flutua = Math.sin(tempo * 0.9 + n.fase) * 0.05;
-      n.p.position.set(x, centroY + n.y * (emFila ? 0.5 : 1) + (1 - dentro) * -6 + flutua - cy * 0.06 + saida * (k % 2 ? 1.4 : 0.8), emFila ? 0 : n.z);
-      n.p.rotation.set(0.04 + cy * 0.12, n.ry * (emFila ? 0.4 : 1) + cx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz * (emFila ? 0.3 : 1) + Math.sin(tempo * 0.6 + n.fase) * 0.02);
+      n.p.position.set(x, centroY + n.y * fator + (1 - dentro) * -6 + flutua - cy * 0.06 + saida * (k % 2 ? 1.4 : 0.8), n.z * fator);
+      n.p.rotation.set(0.04 + cy * 0.12, n.ry + cx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz + Math.sin(tempo * 0.6 + n.fase) * 0.02);
       // A sombra encolhe quando o pacote sobe, como um objeto flutuando sobre o chão
       const forca = dentro * (1 - saida * 1.6) * (1 - flutua * 1.2);
       n.sombra.position.set(x, chaoY, -0.5);
@@ -358,7 +346,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     });
     itensCapa.forEach((s) => {
       const v = s.userData;
-      const cel = passoCel > 0 ? v.cel : null;
+      const cel = fator < 1 ? v.cel : null;
       s.position.x = (cel ? cel[0] : v.pos.x) * (1 + saida * 0.4) + cx * (cel ? 0.05 : 0.12 + v.pos.z * 0.22);
       s.position.y = (cel ? cel[1] : v.pos.y) + Math.sin(tempo * 0.8 + v.fase) * 0.05 - cy * 0.07 + saida * 1.2;
       s.material.rotation += 0.0008;
