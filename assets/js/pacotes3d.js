@@ -8,6 +8,7 @@ const secaoSabores = document.querySelector(".flavors");
 const fls = [...document.querySelectorAll(".fl")];
 const pontos = [...document.querySelectorAll(".flavors__pontos i")];
 
+const toque = window.matchMedia("(hover: none), (pointer: coarse)").matches;
 const sorteio = (a, b) => a + Math.random() * (b - a);
 const suave = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -27,10 +28,20 @@ const largura = (v) => {
 };
 
 const semTres = () => document.documentElement.classList.add("sem3d");
+// Abrir o site com ?diag mostra na tela por que o 3D rodou ou não, para conferir em um celular de verdade
+const diagnostico = (texto) => {
+  if (!new URLSearchParams(location.search).has("diag")) return;
+  const c = document.createElement("canvas"), gl = c.getContext("webgl2") || c.getContext("webgl");
+  const d = document.createElement("pre");
+  d.style.cssText = "position:fixed;left:8px;right:8px;top:90px;z-index:9999;margin:0;padding:10px;background:#000;color:#fff;font:12px monospace;white-space:pre-wrap";
+  d.textContent = `${texto}\nmovimento reduzido: ${reduz}\ntoque: ${toque}\nwebgl: ${!!gl}\ntela: ${innerWidth}x${innerHeight} @${devicePixelRatio}\n${navigator.userAgent}`;
+  document.body.append(d);
+};
 const nomesItens = ["pist1", "pist4", "pist5", "nut1", "fruta1", "fruta2", "folha1", "folha2", "folha3", "folha4", "choc1", "branco1", "lima1"];
 
 if (reduz) {
   semTres();
+  diagnostico("sem 3D: movimento reduzido");
   document.querySelectorAll(".fl").forEach((f, i) => { f.style.background = SABORES[i].fundo; f.style.setProperty("--tx", SABORES[i].tx); f.style.setProperty("--gig", SABORES[i].gig); });
 } else {
   // Só monta o 3D depois do loader: preparar a cena trava a tela, e a animação de entrada engasgaria
@@ -39,6 +50,7 @@ if (reduz) {
     .then(([THREE, { RoomEnvironment }, { SVGLoader }, { mergeVertices }]) => iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices))
     .catch((e) => {
       console.warn("3D indisponível, usando as fotos:", e);
+      diagnostico(`sem 3D: ${e && e.message}`);
       window.miletoPronto.then(window.miletoEscreverSvg);
       semTres();
       fls.forEach((f, i) => { f.style.background = SABORES[i].fundo; f.style.setProperty("--tx", SABORES[i].tx); f.style.setProperty("--gig", SABORES[i].gig); });
@@ -121,7 +133,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
 
   function criarPalco(el) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, toque ? 1.5 : 2)); // celular: troca nitidez por fluidez
     renderer.toneMapping = THREE.NeutralToneMapping;
     el.prepend(renderer.domElement);
     const cena = new THREE.Scene();
@@ -152,6 +164,38 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     mouseX = gsap.utils.clamp(-1, 1, (e.clientX / innerWidth - 0.5) * 2);
     mouseY = gsap.utils.clamp(-1, 1, (e.clientY / innerHeight - 0.5) * 2);
   }, { passive: true });
+
+  /* ---------- Inclinação do celular: move a capa; só existe em sites https ---------- */
+  const sensor = { ativo: false, x: 0, y: 0, alvoX: 0, alvoY: 0, baseX: null, baseY: 0 };
+  const aoInclinar = (e) => {
+    if (e.gamma == null || e.beta == null) return;
+    const ang = (screen.orientation && screen.orientation.angle) || 0;
+    // Em pé, gama é esquerda-direita e beta frente-trás; deitado, eles trocam de papel
+    const lado = ang === 90 ? e.beta : ang === 270 ? -e.beta : e.gamma;
+    const frente = ang === 90 ? -e.gamma : ang === 270 ? e.gamma : e.beta;
+    if (sensor.baseX === null) { sensor.baseX = lado; sensor.baseY = frente; }
+    // A posição "de repouso" acompanha devagar a mão de quem segura, para o pacote voltar ao centro
+    sensor.baseX += (lado - sensor.baseX) * 0.006;
+    sensor.baseY += (frente - sensor.baseY) * 0.006;
+    sensor.alvoX = gsap.utils.clamp(-1.8, 1.8, (lado - sensor.baseX) / 16);
+    sensor.alvoY = gsap.utils.clamp(-1.2, 1.2, (frente - sensor.baseY) / 16);
+    sensor.ativo = true;
+  };
+  if (toque && window.isSecureContext && "DeviceOrientationEvent" in window) {
+    const pedir = DeviceOrientationEvent.requestPermission;
+    if (typeof pedir !== "function") window.addEventListener("deviceorientation", aoInclinar, { passive: true }); // Android
+    else {
+      // iPhone: só libera o sensor depois de um toque de quem visita
+      const botao = document.querySelector(".capa__mover");
+      botao.hidden = false;
+      const aoTocar = () => DeviceOrientationEvent.requestPermission().then((r) => {
+        window.removeEventListener("click", aoTocar);
+        botao.hidden = true;
+        if (r === "granted") window.addEventListener("deviceorientation", aoInclinar, { passive: true });
+      }).catch(() => {}); // sem gesto válido: tenta de novo no próximo toque
+      window.addEventListener("click", aoTocar);
+    }
+  }
 
   /* ---------- Capa: nome em 3D no alto, pacotes em leque embaixo, sombras no chão ---------- */
   const capa = criarPalco(palcoCapa);
@@ -217,7 +261,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     return new THREE.CanvasTexture(c);
   })();
   const noLeque = COLOCA.map((c, n) => {
-    const p = criarPacote(c.i);
+    const p = criarPacote(c.i, toque ? 0.26 : 0.17);
     p.scale.setScalar(1.13);
     capa.cena.add(p);
     const sombra = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSombra, depthWrite: false, depthTest: false }));
@@ -248,7 +292,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     return s;
   });
 
-  let centroY = -1, fatorX = 1, alturaCapa = 6.4, chaoY = -2.42;
+  let fatorZ = 1, centroY = -1, fatorX = 1, alturaCapa = 6.4, chaoY = -2.42;
   const posicionaNome = () => {
     // Encaixa o nome exatamente onde o SVG está, para a troca não dar pulo
     const r = svgLogo.getBoundingClientRect(), pal = palcoCapa.getBoundingClientRect();
@@ -263,6 +307,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     centroY = estreito ? -0.95 : -0.98;
     chaoY = centroY - 1.62;
     fatorX = estreito ? 0.5 : 1;
+    fatorZ = estreito ? 2.4 : 1; // sobrepostos e mais gordinhos: mais distância para um não atravessar o outro
     itensCapa.forEach((s) => { s.visible = !estreito || !!s.userData.noCelular; s.userData.fatorX = estreito ? 0.42 : 1; s.userData.sobe = estreito ? 0.5 : 0; });
     capa.camera.position.set(0, 0, distancia(capa.camera, alturaCapa));
     posicionaNome();
@@ -287,20 +332,21 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
   };
 
   function quadroCapa(tempo) {
+    const cx = sensor.ativo ? sensor.x + dedo.x : mx, cy = sensor.ativo ? sensor.y : my;
     const { entrada, saida, assenta } = estadoCapa;
     const u = nome.userData;
     if (nome.visible && u.base) {
-      nome.position.set(u.base.x + mx * 0.05, u.base.y - my * 0.04 + saida * 1.1 + Math.sin(tempo * 0.7) * 0.012, 0);
-      nome.rotation.set(my * 0.05, mx * 0.09, 0);
+      nome.position.set(u.base.x + cx * 0.05, u.base.y - cy * 0.04 + saida * 1.1 + Math.sin(tempo * 0.7) * 0.012, 0);
+      nome.rotation.set(cy * 0.05, cx * 0.09, 0);
       const e = u.esc * (1 + assenta * 0.018);
       nome.scale.set(e, -e, e);
     }
     noLeque.forEach((n, k) => {
       const dentro = gsap.utils.clamp(0, 1, entrada * 1.5 - k * 0.12);
-      const x = n.x * fatorX * (1 + saida * 0.3) + mx * (0.08 + n.z * 0.1);
+      const x = n.x * fatorX * (1 + saida * 0.3) + cx * (0.08 + n.z * 0.1);
       const flutua = Math.sin(tempo * 0.9 + n.fase) * 0.05;
-      n.p.position.set(x, centroY + n.y + (1 - dentro) * -6 + flutua - my * 0.06 + saida * (k % 2 ? 1.4 : 0.8), n.z);
-      n.p.rotation.set(0.04 + my * 0.12, n.ry + mx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz + Math.sin(tempo * 0.6 + n.fase) * 0.02);
+      n.p.position.set(x, centroY + n.y + (1 - dentro) * -6 + flutua - cy * 0.06 + saida * (k % 2 ? 1.4 : 0.8), n.z * fatorZ);
+      n.p.rotation.set(0.04 + cy * 0.12, n.ry + cx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz + Math.sin(tempo * 0.6 + n.fase) * 0.02);
       // A sombra encolhe quando o pacote sobe, como um objeto flutuando sobre o chão
       const forca = dentro * (1 - saida * 1.6) * (1 - flutua * 1.2);
       n.sombra.position.set(x, chaoY, -0.5);
@@ -309,8 +355,8 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     });
     itensCapa.forEach((s) => {
       const v = s.userData;
-      s.position.x = v.pos.x * (v.fatorX ?? 1) * (1 + saida * 0.4) + mx * (0.12 + v.pos.z * 0.22);
-      s.position.y = v.pos.y + (v.sobe ?? 0) + Math.sin(tempo * 0.8 + v.fase) * 0.05 - my * 0.07 + saida * 1.2;
+      s.position.x = v.pos.x * (v.fatorX ?? 1) * (1 + saida * 0.4) + cx * (0.12 + v.pos.z * 0.22);
+      s.position.y = v.pos.y + (v.sobe ?? 0) + Math.sin(tempo * 0.8 + v.fase) * 0.05 - cy * 0.07 + saida * 1.2;
       s.material.rotation += 0.0008;
       s.scale.copy(v.base).multiplyScalar(Math.min(1, entrada));
     });
@@ -319,7 +365,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
 
   /* ---------- Sabores: a rolagem troca o sabor, com um pacote subindo e o próximo vindo de baixo ---------- */
   const sabores = criarPalco(palcoSabores);
-  const pacotes = SABORES.map((_, i) => { const p = criarPacote(i, 0.24); p.visible = false; sabores.cena.add(p); // mais gordinhos: giram e mostram a lateral
+  const pacotes = SABORES.map((_, i) => { const p = criarPacote(i, toque ? 0.3 : 0.24); p.visible = false; sabores.cena.add(p); // mais gordinhos: giram e mostram a lateral
     return p; });
   // Oito ingredientes por sabor, em posições fixas em volta do pacote
   // Nenhum fica no canto inferior direito, onde está o texto
@@ -369,7 +415,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
       if (g.visible) {
         // Fica parado no centro por um tempo; o de cima sobe e o próximo vem de baixo
         const e = Math.sign(d) * (dist < 0.5 ? Math.pow(dist * 2, 1.7) / 2 : dist);
-        g.position.set(mx * 0.08, Math.sin(tempo * 0.9) * 0.04 + e * 3.1, 0);
+        g.position.set(mx * 0.08, Math.sin(tempo * 0.9) * 0.04 + e * (fatorSabor < 1 ? 4.4 : 3.1), 0); // no retrato o próximo fica fora da tela, longe do texto
         // A troca é só o deslize vertical; o mouse ainda inclina o pacote de leve
         g.rotation.set(0.03 + my * 0.14, -0.12 + mx * 0.28 + Math.sin(tempo * 0.5) * 0.08, -0.1 + Math.sin(tempo * 0.6) * 0.015);
       }
@@ -377,7 +423,7 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     conjuntos.forEach((itensS, i) => {
       const d = p - i, vis = 1 - suave(0.22, 0.46, Math.abs(d));
       itensS.forEach((s) => {
-        s.visible = vis > 0.01;
+        s.visible = vis > 0.01 && !(fatorSabor < 1 && s.userData.pos.y < -1); // no retrato, os de baixo cobririam o texto
         if (!s.visible) return;
         const u = s.userData, abre = 0.55 + 0.45 * vis;
         s.position.set(u.pos.x * fatorSabor * abre + mx * (0.12 + u.pos.z * 0.25), u.pos.y * abre + Math.sin(tempo * 0.8 + u.fase) * 0.06 - my * 0.08 - d * 1.2, u.pos.z);
@@ -403,13 +449,25 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     new IntersectionObserver((es) => { noPalco.set(fn, es[0].isIntersecting); }).observe(pl.el);
     pl.ajustar();
   });
+  // No celular não há mouse: os pacotes balançam sozinhos, mostrando o volume, e o dedo também os vira
+  const dedo = { x: 0, inicio: 0 };
+  if (toque) {
+    window.addEventListener("touchstart", (e) => { dedo.inicio = e.touches[0].clientX - dedo.x * 90; gsap.killTweensOf(dedo); }, { passive: true });
+    window.addEventListener("touchmove", (e) => { dedo.x = gsap.utils.clamp(-2, 2, (e.touches[0].clientX - dedo.inicio) / 90); }, { passive: true });
+    window.addEventListener("touchend", () => gsap.to(dedo, { x: 0, duration: 1.2, ease: "power3.out" }), { passive: true });
+  }
   const relogio = new THREE.Clock();
   gsap.ticker.add(() => {
     const tempo = relogio.getElapsedTime();
-    mx += (mouseX - mx) * 0.08;
-    my += (mouseY - my) * 0.08;
+    const alvoX = toque ? Math.sin(tempo * 0.8) * 1.5 + dedo.x : mouseX;
+    const alvoY = toque ? Math.sin(tempo * 0.55) * 0.6 : mouseY;
+    sensor.x += (sensor.alvoX - sensor.x) * 0.1;
+    sensor.y += (sensor.alvoY - sensor.y) * 0.1;
+    mx += (alvoX - mx) * 0.08;
+    my += (alvoY - my) * 0.08;
     noPalco.forEach((ativo, fn) => { if (ativo) fn(tempo); });
   });
   document.querySelector(".capa__fotos")?.remove();
   escreveNome();
+  diagnostico("3D ativo");
 }

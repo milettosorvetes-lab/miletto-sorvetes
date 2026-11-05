@@ -86,6 +86,7 @@
 "Perguntar no WhatsApp onde comprar":["Ask on WhatsApp where to buy", "Preguntar por WhatsApp dónde comprar"],
 "A gente indica o ponto mais perto de você.":["We'll point you to the nearest store.", "Te indicamos el punto más cercano."],
 "ponto de venda":["point of sale", "punto de venta"],
+"Mover com o celular":["Move with your phone","Mover con el celular"],
 "Novidades 2026":["New in 2026","Novedades 2026"],
 "Acabou de chegar na":["Just arrived at","Recién llegado a"],
 "Lançamento":["New","Novedad"],
