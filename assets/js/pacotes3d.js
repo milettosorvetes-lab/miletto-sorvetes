@@ -262,7 +262,6 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
   })();
   const noLeque = COLOCA.map((c, n) => {
     const p = criarPacote(c.i, toque ? 0.26 : 0.17);
-    p.scale.setScalar(1.13);
     capa.cena.add(p);
     const sombra = new THREE.Sprite(new THREE.SpriteMaterial({ map: texSombra, depthWrite: false, depthTest: false }));
     sombra.renderOrder = -1;
@@ -281,18 +280,18 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     t.colorSpace = THREE.SRGBColorSpace;
     return (texItem[nomeTex + "-blur"] = t, nomeTex + "-blur");
   };
-  // x, y, z, tamanho, aparece no celular
-  const ITENS_CAPA = [["pist4", -3.75, -0.25, 0.3, 0.52, 1], ["fruta2", -2.5, 0.42, 0.5, 0.26, 0], ["nut1", -0.02, 0.62, 0.7, 0.15, 1], ["pist1", 1.3, 0.52, 0.5, 0.42, 1], ["lima1", 3.65, 0.05, 0.3, 0.5, 1], ["fruta1", 3.5, -1.25, 0.4, 0.3, 1], ["choc1", -3.45, -1.2, 0.2, 0.24, 0], [desfoca("folha2"), 4.35, 0.75, 1.2, 0.72, 0], [desfoca("folha3"), -3.9, -2.15, 1.3, 0.8, 1]];
+  // x, y, z, tamanho e a posição no celular, onde só ficam acima e abaixo da fila de pacotes (sem ela, não aparece)
+  const ITENS_CAPA = [["pist4", -3.75, -0.25, 0.3, 0.52, [-1.72, 0.72]], ["fruta2", -2.5, 0.42, 0.5, 0.26], ["nut1", -0.02, 0.62, 0.7, 0.15, [-0.1, 0.82]], ["pist1", 1.3, 0.52, 0.5, 0.42, [0.72, 0.74]], ["lima1", 3.65, 0.05, 0.3, 0.5, [1.76, 0.62]], ["fruta1", 3.5, -1.25, 0.4, 0.3, [1.62, -2.42]], ["choc1", -3.45, -1.2, 0.2, 0.24], [desfoca("folha2"), 4.35, 0.75, 1.2, 0.72], [desfoca("folha3"), -3.9, -2.15, 1.3, 0.8, [-1.75, -2.5]]];
   const itensCapa = ITENS_CAPA.map(([n, x, y, z, t, cel]) => {
     const s = criarItem(n, t);
     s.position.set(x, y, z);
     s.userData.pos = s.position.clone();
-    s.userData.noCelular = cel;
+    s.userData.cel = cel;
     capa.cena.add(s);
     return s;
   });
 
-  let fatorZ = 1, centroY = -1, fatorX = 1, alturaCapa = 6.4, chaoY = -2.42;
+  let passoCel = 0, centroY = -1, escalaItem = 1, alturaCapa = 6.4, chaoY = -2.42;
   const posicionaNome = () => {
     // Encaixa o nome exatamente onde o SVG está, para a troca não dar pulo
     const r = svgLogo.getBoundingClientRect(), pal = palcoCapa.getBoundingClientRect();
@@ -304,11 +303,14 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
   capa.aoAjustar = (asp) => {
     const estreito = asp < 0.85;
     alturaCapa = estreito ? Math.max(8.2, 3.9 / asp) : Math.max(6.4, 11 / asp);
-    centroY = estreito ? -0.95 : -0.98;
-    chaoY = centroY - 1.62;
-    fatorX = estreito ? 0.5 : 1;
-    fatorZ = estreito ? 2.4 : 1; // sobrepostos e mais gordinhos: mais distância para um não atravessar o outro
-    itensCapa.forEach((s) => { s.visible = !estreito || !!s.userData.noCelular; s.userData.fatorX = estreito ? 0.42 : 1; s.userData.sobe = estreito ? 0.5 : 0; });
+    centroY = estreito ? -0.75 : -0.98;
+    // Celular: fila de quatro com respiro, sem sobrepor; o tamanho sai da largura da tela
+    passoCel = estreito ? (alturaCapa * asp) / 4.25 : 0;
+    const esc = estreito ? passoCel * 0.82 : 1.13;
+    noLeque.forEach((n) => { n.p.scale.setScalar(esc); n.esc = esc; });
+    chaoY = centroY - 1.43 * esc;
+    escalaItem = estreito ? 0.8 : 1;
+    itensCapa.forEach((s) => { s.visible = !estreito || !!s.userData.cel; });
     capa.camera.position.set(0, 0, distancia(capa.camera, alturaCapa));
     posicionaNome();
   };
@@ -343,22 +345,24 @@ async function iniciar(THREE, RoomEnvironment, SVGLoader, mergeVertices) {
     }
     noLeque.forEach((n, k) => {
       const dentro = gsap.utils.clamp(0, 1, entrada * 1.5 - k * 0.12);
-      const x = n.x * fatorX * (1 + saida * 0.3) + cx * (0.08 + n.z * 0.1);
+      const emFila = passoCel > 0;
+      const x = (emFila ? (k - 1.5) * passoCel : n.x * (1 + saida * 0.3)) + (emFila ? 0 : cx * (0.08 + n.z * 0.1));
       const flutua = Math.sin(tempo * 0.9 + n.fase) * 0.05;
-      n.p.position.set(x, centroY + n.y + (1 - dentro) * -6 + flutua - cy * 0.06 + saida * (k % 2 ? 1.4 : 0.8), n.z * fatorZ);
-      n.p.rotation.set(0.04 + cy * 0.12, n.ry + cx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz + Math.sin(tempo * 0.6 + n.fase) * 0.02);
+      n.p.position.set(x, centroY + n.y * (emFila ? 0.5 : 1) + (1 - dentro) * -6 + flutua - cy * 0.06 + saida * (k % 2 ? 1.4 : 0.8), emFila ? 0 : n.z);
+      n.p.rotation.set(0.04 + cy * 0.12, n.ry * (emFila ? 0.4 : 1) + cx * 0.32 + saida * (k < 2 ? -1.5 : 1.5) + (1 - dentro) * 2.4, n.rz * (emFila ? 0.3 : 1) + Math.sin(tempo * 0.6 + n.fase) * 0.02);
       // A sombra encolhe quando o pacote sobe, como um objeto flutuando sobre o chão
       const forca = dentro * (1 - saida * 1.6) * (1 - flutua * 1.2);
       n.sombra.position.set(x, chaoY, -0.5);
-      n.sombra.scale.set(1.55 * Math.max(0.3, forca), 0.26 * Math.max(0.3, forca), 1);
+      n.sombra.scale.set(1.37 * n.esc * Math.max(0.3, forca), 0.23 * n.esc * Math.max(0.3, forca), 1);
       n.sombra.material.opacity = Math.max(0, forca);
     });
     itensCapa.forEach((s) => {
       const v = s.userData;
-      s.position.x = v.pos.x * (v.fatorX ?? 1) * (1 + saida * 0.4) + cx * (0.12 + v.pos.z * 0.22);
-      s.position.y = v.pos.y + (v.sobe ?? 0) + Math.sin(tempo * 0.8 + v.fase) * 0.05 - cy * 0.07 + saida * 1.2;
+      const cel = passoCel > 0 ? v.cel : null;
+      s.position.x = (cel ? cel[0] : v.pos.x) * (1 + saida * 0.4) + cx * (cel ? 0.05 : 0.12 + v.pos.z * 0.22);
+      s.position.y = (cel ? cel[1] : v.pos.y) + Math.sin(tempo * 0.8 + v.fase) * 0.05 - cy * 0.07 + saida * 1.2;
       s.material.rotation += 0.0008;
-      s.scale.copy(v.base).multiplyScalar(Math.min(1, entrada));
+      s.scale.copy(v.base).multiplyScalar(Math.min(1, entrada) * escalaItem);
     });
     capa.renderer.render(capa.cena, capa.camera);
   }

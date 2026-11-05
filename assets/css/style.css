@@ -738,7 +738,8 @@ body { background: var(--creme); }
   .capa__frase { bottom: 60px; }
   .capa__frase strong { display: block; font-size: 1.35rem; }
   .capa__fotos { top: 34vh; gap: 0; }
-  .capa__fotos img { height: 29vh; margin-inline: -7vw; }
+  .capa__fotos { gap: 2vw; }
+  .capa__fotos img { height: 21vh; }
   .capa__rodape { font-size: .62rem; }
   .fl__gigante { top: 25%; font-size: 15vw; }
   .fl__info { left: var(--gutter); right: var(--gutter); bottom: 22px; width: auto; }
